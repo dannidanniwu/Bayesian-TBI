@@ -1,9 +1,12 @@
 # import code for BSIM
 source("/gpfs/home/dw2625/r/BSIM/bsim_code.R")
-source("/gpfs/home/dw2625/r/BSIM/brms_single_bayes_02152023.R")
+source("/gpfs/home/dw2625/r/BSIM/bayes_spline_model.R")
 #source("./bsim_code.R")
 #source("./brms_single_bayes_02152023.R")
-
+set_cmdstan_path(path = "/gpfs/share/apps/cmdstan/2.25.0")
+# Compile stan code for fitting a single Bayesian model 
+mod <- cmdstan_model("/gpfs/home/dw2625/r/BSIM/splinetbi.stan");
+#mod <- cmdstan_model("./splinetbi.stan");
 library(splines)
 library(movMF) 
 library(mgcv) 

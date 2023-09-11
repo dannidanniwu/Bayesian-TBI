@@ -20,8 +20,7 @@ parameters {
 }
 
 model {
-  // Priors (can be adjusted as needed)
-
+  real yhat[N];
   for (d in 1:D) {
     for (j in 1:J) {
       beta_spline[d][j] ~ normal(0, 5);
@@ -32,11 +31,11 @@ model {
 
   // Likelihood
   for (i in 1:N) {
-    real logit = dot_product(X[i], m);
+    yhat[i] = dot_product(X[i], m);
     for (d in 1:D) {
-      logit += dot_product(B[d][i], beta_spline[d][A[i]]);
+      yhat[i] += dot_product(B[d][i], beta_spline[d][A[i]]);
     }
-    Y[i] ~ bernoulli_logit(logit);
+    Y[i] ~ bernoulli_logit(yhat[i]);
   }
 }
 
