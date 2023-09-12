@@ -1,8 +1,7 @@
 # import code for BSIM
 source("/gpfs/home/dw2625/r/BSIM/bsim_code.R")
-source("/gpfs/home/dw2625/r/BSIM/bayes_spline_model.R")
-#source("./bsim_code.R")
-#source("./brms_single_bayes_02152023.R")
+source("/gpfs/home/dw2625/r/BSIM/bayes_spline.R")
+
 set_cmdstan_path(path = "/gpfs/share/apps/cmdstan/2.25.0")
 # Compile stan code for fitting a single Bayesian model 
 mod <- cmdstan_model("/gpfs/home/dw2625/r/BSIM/splinetbi.stan");
@@ -171,38 +170,34 @@ oneExperimentFn <- function(iter,
   
   
   ### 2) Single Bayesian model
-  sgbayes.coefs <- bayes_single_model(X = X,p=p, y = y, A = A) 
+  spbayes.coefs <- bayes_spline_model(X = X,p=p, y = y, A = A, mod=mod, xnew=xnew, xmnew=xmnew, newA=newA, coefs = sgbayes.coefs,thresh = 0) 
+  div = spbayes.coefs$div
   
-  #GR.sgbayes <- stable.GR(as.matrix(sgbayes.coefs[,1:(ncol(sgbayes.coefs)-1)]))  
-  # Divergent transitions from this Bayesian mdoel
-  div <- unique(sgbayes.coefs$div_single)
-  sng.bayes.predicted <- pred_sng_bayes(xnew=xnew, xmnew=xmnew, newA=newA, A.mean=bsim.obj$A.mean, coefs = sgbayes.coefs, thresh = 0)
-  # Estimated optimal treatment decision
-  sng.bayes.optim.trt <- sapply(sng.bayes.predicted$tbi, function(x) ifelse(x > 0.5, 2, 1)) #if Pr(contrast<0) greater than 0.5, recommend CCP
+  spbayes.optim.trt <- sapply(spbayes.coefs$tbi, function(x) ifelse(x > 0.5, 2, 1)) #if Pr(contrast<0) greater than 0.5, recommend CCP
   
   # The percentage of making correct treatment decision using BSIM
-  sng.bayes.tab <- table(sng.bayes.optim.trt, true.optim.trt)
-  sng.bayes.accuracy <- sum(diag(sng.bayes.tab))/sum(sng.bayes.tab)
+  spbayes.tab <- table(spbayes.optim.trt, true.optim.trt)
+  spbayes.accuracy <- sum(diag(spbayes.tab))/sum(spbayes.tab)
   
   ## Single model bayes "value" (expected outcome under ITR)
-  sng.bayes.value.tmp <- ifelse(sng.bayes.optim.trt==1, test.data$mu.1, test.data$mu.2)
-  sng.bayes.value <- mean(sng.bayes.value.tmp) #E(P(Y=1|single basyes model estimated optimal trt))
-  sng.bayes.value 
+  spbayes.value.tmp <- ifelse(spbayes.optim.trt==1, test.data$mu.1, test.data$mu.2)
+  spbayes.value <- mean(spbayes.value.tmp) #E(P(Y=1|single basyes model estimated optimal trt))
+  spbayes.value 
   
   ## "prediction error" (out-sample deviance)
   # predicted$eta.distr (n.test*n.samples): a canonical paramter matrix with a row for each observation(test data point) and a column for each posterior sample
   ##ll:each row: binomial log-likelihood (for each observation in the test data) use exponential family distributionfunction
-  sng.bayes.ll <-  test.data$y *sng.bayes.predicted$eta.distr - log(1 + exp(sng.bayes.predicted$eta.distr))  # n.test*n.samples;binomial log-likelihood (for the test data) use exponenetial family function
-  n.samples <- ncol(sng.bayes.ll) 
+  spbayes.ll <-  test.data$y * t(spbayes.coefs$eta_distr) - log(1 + exp(t(spbayes.coefs$eta_distr)))  # n.test*n.samples;binomial log-likelihood (for the test data) use exponenetial family function
+  n.samples <- ncol(spbayes.ll) 
   
-  sng.bayes.f <- function(i){     # this computes log of the mean of exponentiated values for log likelihood for each oberservations in the test data(for numerical stability)
-    xmax <- max(sng.bayes.ll[i,])
-    xsum <- sum(exp(sng.bayes.ll[i, ] - xmax)) #ensure that the largest positive exponentiated term is exp(0)=1.
+  spbayes.f <- function(i){     # this computes log of the mean of exponentiated values for log likelihood for each oberservations in the test data(for numerical stability)
+    xmax <- max(spbayes.ll[i,])
+    xsum <- sum(exp(spbayes.ll[i, ] - xmax)) #ensure that the largest positive exponentiated term is exp(0)=1.
     xmax + log(xsum) - log(n.samples)#mean of likelihood(ie.e, mean of each row of exp(ll)) for observation
   }
   
-  sng.bayes.deviance <- -2*mean(sapply(1:nrow(sng.bayes.ll), sng.bayes.f)) 
-  sng.bayes.deviance
+  spbayes.deviance <- -2*mean(sapply(1:nrow(spbayes.ll), spbayes.f)) 
+  spbayes.deviance
   
   
   data.table(iter=iter,n=n, p=p, g.choice=g.choice,m.choice=m.choice, 
@@ -214,10 +209,10 @@ oneExperimentFn <- function(iter,
              value.all.get.2=value.all.get.2,
              bsim.deviance=bsim.deviance, 
              bsim.accuracy=bsim.accuracy,
-             sng.bayes.accuracy=sng.bayes.accuracy,
-             sng.bayes.value =sng.bayes.value,
-             sng.bayes.deviance=sng.bayes.deviance,
-             sng.bayes.diff.value= sng.bayes.value - test.data$value.opt,
+             spbayes.accuracy=spbayes.accuracy,
+             spbayes.value =spbayes.value,
+             spbayes.deviance=spbayes.deviance,
+             spbayes.diff.value= spbayes.value - test.data$value.opt,
              div=div
              #,
              # GR.beta.psrf.1.03 = mean(GR.beta$psrf<1.03),
@@ -287,7 +282,7 @@ for(r in  1:nrow(scenarios))
                        job_name = "BSIM_55",
                        sbatch_opt = list(time = "12:00:00",partition = "cpu_short", `mem-per-cpu` = "25G"),
                        export = c("bsim.fn","Sbeta","logDen","vonmises.lpr","metrop","pred.fn",
-                                  "generate.data2", "bayes_single_model", "pred_sng_bayes"),
+                                  "generate.data2", "bayes_spline_model"),
                        plan = "wait",
                        overwrite=TRUE)
   res <- Slurm_collect(sjob) # data is a list

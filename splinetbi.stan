@@ -41,14 +41,14 @@ model {
 
 generated quantities {
   real eta[N_new];
-  vector[N] contrast_distr;
+  real contrast_distr[N_new];
   
   for (i in 1:N_new) {
     eta[i] = dot_product(Xnew[i], m);
     contrast_distr[i] = 0;
     for (d in 1:D) {
       eta[i] += dot_product(Bnew[d][i], beta_spline[d][Anew[i]]);
-      contrast_distr[i] += dot_product(B[d][i], beta_spline[d][2]) - dot_product(B[d][i], beta_spline[d][1]);
+      contrast_distr[i] += dot_product(Bnew[d][i], beta_spline[d][2]) - dot_product(Bnew[d][i], beta_spline[d][1]);
     }
   }
   
